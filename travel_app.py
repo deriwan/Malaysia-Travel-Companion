@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 
 # ======================= CONFIG =========================
-WEATHER_API_KEY = "c5f793c96c8d51ad36c4b3be61b0fad0"
+WEATHER_API_KEY = "15aee72fdd4a19cc0c56ea7607bf6af1"
 LOCATION_API_KEY = "5616c393bcf417"
 
 # ================== LOCATION DETECTION ==================
