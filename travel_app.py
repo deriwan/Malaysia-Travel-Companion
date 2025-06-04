@@ -1,136 +1,107 @@
 import streamlit as st
 import requests
-import pandas as pd
 import plotly.express as px
-from datetime import datetime
 
-# ============ API KEYS ============
+st.set_page_config(page_title="Smart Malaysia Travel Companion", layout="wide")
+
+# ======================= Konfigurasi API =========================
+IPINFO_API_KEY = "5616c393bcf417"
 WEATHER_API_KEY = "15aee72fdd4a19cc0c56ea7607bf6af1"
-LOCATION_API_KEY = "5616c393bcf417"
 
-# ============ GET LOCATION ============
+# ======================= Fungsi Utiliti ==========================
 def get_location_by_ip():
     try:
-        res = requests.get(f"https://ipinfo.io/json?token={LOCATION_API_KEY}")
+        res = requests.get(f"https://ipinfo.io/json?token={IPINFO_API_KEY}")
         data = res.json()
-        loc = data.get("loc")
-        city = data.get("city")
-        if not loc or not city:
-            raise Exception("Invalid IPInfo data")
-        lat, lon = map(float, loc.split(","))
-        return {"city": city, "latitude": lat, "longitude": lon}
+        loc = data.get("loc", "0,0").split(",")
+        return {
+            "city": data.get("city", "Unknown"),
+            "lat": float(loc[0]),
+            "lon": float(loc[1])
+        }
     except:
-        return {"city": "Kuala Lumpur", "latitude": 3.1390, "longitude": 101.6869}
+        return {"city": "Unknown", "lat": 0.0, "lon": 0.0}
 
-# ============ GET WEATHER ============
 def get_weather_forecast(lat, lon):
     try:
         url = (
-            f"https://api.openweathermap.org/data/2.5/onecall?"
+            f"https://api.openweathermap.org/data/3.0/onecall?"
             f"lat={lat}&lon={lon}&exclude=minutely,hourly,alerts&units=metric&appid={WEATHER_API_KEY}"
         )
         res = requests.get(url)
         data = res.json()
+
+        if "current" not in data:
+            st.error(f"Gagal dapatkan data cuaca: {data.get('message', 'Tiada data')}")
+            st.stop()
+
         return data
-    except:
-        return None
+    except Exception as e:
+        st.error(f"Ralat API: {str(e)}")
+        st.stop()
 
-# ============ PAGE SETUP ============
-st.set_page_config(page_title="Smart Malaysia Travel Companion", layout="centered")
-st.markdown(
-    """
-    <style>
-    .main {
-        background-color: #f4f9ff;
-    }
-    .big-font {
-        font-size: 24px !important;
-    }
-    .weather-box {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
-    }
-    </style>
-    """, unsafe_allow_html=True
+# ======================= Antaramuka Streamlit ====================
+st.markdown("""
+    <h1 style='text-align: center; color: white;'>🌴 Smart Malaysia Travel Companion</h1>
+    <p style='text-align: center;'>Your real-time travel assistant with local weather forecast.</p>
+""", unsafe_allow_html=True)
+
+with st.sidebar:
+    st.subheader("📍 Pilih Lokasi")
+    auto_loc = st.checkbox("Guna Lokasi Automatik")
+
+    location = {}
+    if auto_loc:
+        location = get_location_by_ip()
+        st.success(f"Lokasi anda: {location['city']}")
+    else:
+        city_coords = {
+            "Kuala Lumpur": (3.139, 101.6869),
+            "Penang": (5.4141, 100.3288),
+            "Johor Bahru": (1.4927, 103.7414),
+            "Kota Kinabalu": (5.9804, 116.0735),
+            "Kuching": (1.5533, 110.3592)
+        }
+        city = st.selectbox("Pilih Bandar", list(city_coords.keys()))
+        lat, lon = city_coords[city]
+        location = {"city": city, "lat": lat, "lon": lon}
+
+# ======================= Dapatkan Data Cuaca =====================
+st.success(f"Lokasi: *{location['city']}* ({location['lat']}, {location['lon']})")
+forecast = get_weather_forecast(location['lat'], location['lon'])
+
+# DEBUGGING: Uncomment untuk lihat response
+# st.write(forecast)
+
+# ======================= Paparan Data ============================
+current = forecast["current"]
+daily = forecast["daily"]
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("🌡️ Suhu Sekarang", f"{current['temp']}°C")
+with col2:
+    st.metric("💧 Kelembapan", f"{current['humidity']}%")
+with col3:
+    st.metric("🌬️ Angin", f"{current['wind_speed']} m/s")
+
+# ======================= Carta Ramalan Harian ====================
+import datetime
+
+hari = [datetime.datetime.fromtimestamp(day['dt']).strftime('%A') for day in daily]
+suhu_maks = [day['temp']['max'] for day in daily]
+suhu_min = [day['temp']['min'] for day in daily]
+
+fig = px.line(x=hari, y=[suhu_maks, suhu_min], labels={'x': 'Hari', 'value': 'Suhu (°C)'},
+              title="Ramalan Suhu Harian", template="plotly_dark")
+fig.update_layout(
+    legend_title_text='Suhu',
+    legend=dict(itemsizing='constant', items=["Max", "Min"]),
+    xaxis_title="Hari",
+    yaxis_title="Suhu (°C)",
+    margin=dict(l=20, r=20, t=40, b=20)
 )
+st.plotly_chart(fig, use_container_width=True)
 
-st.title("🌴 Smart Malaysia Travel Companion")
-st.markdown("Your real-time travel assistant with local weather forecast.")
-
-# ============ SIDEBAR LOCATION ============
-city_list = {
-    "Kuala Lumpur": (3.1390, 101.6869),
-    "George Town": (5.4141, 100.3288),
-    "Johor Bahru": (1.4927, 103.7414),
-    "Shah Alam": (3.0738, 101.5183),
-    "Ipoh": (4.5975, 101.0901),
-    "Kuantan": (3.8046, 103.3256),
-    "Malacca": (2.1896, 102.2501),
-    "Alor Setar": (6.1248, 100.3677),
-    "Kota Bharu": (6.1254, 102.2381),
-    "Kota Kinabalu": (5.9804, 116.0735),
-    "Kuching": (1.5533, 110.3592),
-    "Seremban": (2.7297, 101.9381)
-}
-
-st.sidebar.subheader("📍 Pilih Lokasi")
-use_auto = st.sidebar.checkbox("Guna Lokasi Automatik", value=True)
-
-if use_auto:
-    location = get_location_by_ip()
-    city = location["city"]
-    lat, lon = location["latitude"], location["longitude"]
-else:
-    city = st.sidebar.selectbox("Pilih Bandar", list(city_list.keys()))
-    lat, lon = city_list[city]
-
-st.success(f"Lokasi: *{city}* ({lat}, {lon})")
-
-# ============ FETCH WEATHER ============
-forecast = get_weather_forecast(lat, lon)
-
-if forecast:
-    current = forecast["current"]
-    daily = forecast["daily"]
-
-    st.markdown("### ☁️ Cuaca Terkini")
-    st.markdown(
-        f"""
-        <div class="weather-box">
-        <h3>{city}</h3>
-        <p class="big-font">🌡️ {current['temp']}°C</p>
-        <p>{current['weather'][0]['description'].title()}</p>
-        <p>💧 Kelembapan: {current['humidity']}% | 💨 Angin: {current['wind_speed']} m/s</p>
-        </div>
-        """, unsafe_allow_html=True
-    )
-
-    # ============ GRAPH ============
-    st.markdown("### 📊 Ramalan Suhu Mingguan")
-
-    dates = []
-    temps = []
-    icons = []
-
-    for day in daily[:7]:
-        dt = datetime.fromtimestamp(day["dt"]).strftime("%A")
-        temp = day["temp"]["day"]
-        icon = day["weather"][0]["icon"]
-        dates.append(dt)
-        temps.append(temp)
-        icons.append(icon)
-
-    df = pd.DataFrame({
-        "Hari": dates,
-        "Suhu (°C)": temps
-    })
-
-    fig = px.bar(df, x="Hari", y="Suhu (°C)", color="Suhu (°C)",
-                 color_continuous_scale="Blues", height=400)
-    st.plotly_chart(fig)
-
-else:
-    st.error("Gagal dapatkan data cuaca.")
+# ======================= Nota Tambahan ===========================
+st.caption("Dikuasakan oleh OpenWeather & IPInfo APIs. 🇲🇾")
