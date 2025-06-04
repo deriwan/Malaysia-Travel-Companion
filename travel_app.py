@@ -2,93 +2,116 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
-import folium
-from streamlit_folium import st_folium
 
-# ✅ API Keys (yang kau bagi)
-WEATHER_API_KEY = '15aee72fdd4a19cc0c56ea7607bf6af1'
-LOCATION_API_KEY = '5616c393bcf417'
+# ======================= CONFIG =========================
+WEATHER_API_KEY = "15aee72fdd4a19cc0c56ea7607bf6af1"
+LOCATION_API_KEY = "5616c393bcf417"
 
+# ================== LOCATION DETECTION ==================
 def get_location_by_ip():
     try:
-        res = requests.get("https://ipinfo.io/json?token=" + LOCATION_API_KEY)
+        res = requests.get(f"https://ipinfo.io/json?token={LOCATION_API_KEY}")
         data = res.json()
-        loc = data.get("loc", "3.1390,101.6869")  # fallback KL
+        loc = data.get("loc")
+        city = data.get("city")
+
+        if not loc or not city:
+            raise Exception("Invalid IPInfo data")
+
         lat, lon = map(float, loc.split(","))
         return {
-            "city": data.get("city", "Kuala Lumpur"),
+            "city": city,
             "latitude": lat,
             "longitude": lon
         }
     except Exception as e:
-        print("Error getting location:", e)
-        return None
-
-def get_weather_data(city):
-    try:
-        geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city},MY&limit=1&appid={WEATHER_API_KEY}"
-        geo_res = requests.get(geo_url).json()
-        if not geo_res:
-            return None
-        lat = geo_res[0]["lat"]
-        lon = geo_res[0]["lon"]
-
-        weather_url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&units=metric&exclude=minutely,hourly,alerts&appid={WEATHER_API_KEY}"
-        weather_res = requests.get(weather_url).json()
-
-        current = weather_res["current"]
-        daily = weather_res["daily"][:7]
-
-        forecast_days = []
-        forecast_temps = []
-
-        from datetime import datetime
-        for day in daily:
-            dt = datetime.utcfromtimestamp(day["dt"]).strftime("%a")
-            forecast_days.append(dt)
-            forecast_temps.append(day["temp"]["day"])
-
+        print("Location error:", e)
         return {
-            "current_temp": round(current["temp"], 1),
-            "description": current["weather"][0]["description"],
-            "forecast_days": forecast_days,
-            "forecast_temps": forecast_temps
+            "city": "Kuala Lumpur",
+            "latitude": 3.1390,
+            "longitude": 101.6869
         }
-    except Exception as e:
-        print("Error getting weather data:", e)
+
+# ==================== WEATHER DATA ======================
+def get_weather_data(city):
+    url = (
+        f"https://api.openweathermap.org/data/2.5/weather?q={city}"
+        f"&appid={WEATHER_API_KEY}&units=metric"
+    )
+    res = requests.get(url)
+    if res.status_code == 200:
+        return res.json()
+    else:
         return None
 
-# ---------- UI Starts Here ----------
+# =================== STREAMLIT UI ========================
 st.set_page_config(page_title="Smart Malaysia Travel Companion", layout="wide")
 st.title("🇲🇾 Smart Malaysia Travel Companion")
-st.markdown("Welcome to your intelligent travel assistant for exploring Malaysia!")
+st.write("Dapatkan maklumat lokasi & cuaca semasa anda di Malaysia!")
 
-location_data = get_location_by_ip()
-if location_data:
-    city = location_data.get("city", "Kuala Lumpur")
-    lat = location_data.get("latitude", 3.139)
-    lon = location_data.get("longitude", 101.6869)
+# Sidebar - Location
+city_options = [
+    "Kuala Lumpur", "George Town", "Johor Bahru", "Shah Alam",
+    "Ipoh", "Kuantan", "Malacca", "Alor Setar", "Kota Bharu",
+    "Kota Kinabalu", "Kuching", "Seremban"
+]
+
+st.sidebar.subheader("📌 Pilih Lokasi")
+use_auto = st.sidebar.checkbox("Guna lokasi automatik", value=True)
+
+if use_auto:
+    loc = get_location_by_ip()
+    city = loc["city"]
+    lat = loc["latitude"]
+    lon = loc["longitude"]
+    st.success(f"Guna lokasi automatik: *{city}*")
 else:
-    st.warning("Could not detect your location. Defaulting to Kuala Lumpur.")
-    city = "Kuala Lumpur"
-    lat, lon = 3.139, 101.6869
+    city = st.sidebar.selectbox("Pilih bandar", city_options)
+    # optional: set manual lat/lon via dict
+    city_coords = {
+        "Kuala Lumpur": (3.1390, 101.6869),
+        "George Town": (5.4141, 100.3288),
+        "Johor Bahru": (1.4927, 103.7414),
+        "Shah Alam": (3.0738, 101.5183),
+        "Ipoh": (4.5975, 101.0901),
+        "Kuantan": (3.8046, 103.3256),
+        "Malacca": (2.1896, 102.2501),
+        "Alor Setar": (6.1248, 100.3677),
+        "Kota Bharu": (6.1254, 102.2381),
+        "Kota Kinabalu": (5.9804, 116.0735),
+        "Kuching": (1.5533, 110.3592),
+        "Seremban": (2.7297, 101.9381)
+    }
+    lat, lon = city_coords.get(city, (3.1390, 101.6869))
+    st.info(f"Guna lokasi manual: *{city}*")
 
-st.subheader(f"📍 Current Location: {city}")
-m = folium.Map(location=[lat, lon], zoom_start=12)
-folium.Marker([lat, lon], tooltip="You are here").add_to(m)
-st_data = st_folium(m, width=700, height=400)
+# Fetch weather
+weather = get_weather_data(city)
 
-weather_data = get_weather_data(city)
-if weather_data:
-    st.subheader("🌦️ Current Weather & Forecast")
-    st.write(f"*Temperature Now:* {weather_data['current_temp']} °C")
-    st.write(f"*Condition:* {weather_data['description'].title()}")
+# Show Weather Info
+if weather:
+    st.subheader(f"🌤️ Cuaca Terkini di {city}")
+    col1, col2 = st.columns(2)
 
-    df = pd.DataFrame({
-        "Day": weather_data["forecast_days"],
-        "Temperature (°C)": weather_data["forecast_temps"]
-    })
-    fig = px.line(df, x="Day", y="Temperature (°C)", title="7-Day Temperature Forecast", markers=True)
-    st.plotly_chart(fig, use_container_width=True)
+    with col1:
+        st.metric("Suhu", f"{weather['main']['temp']}°C")
+        st.metric("Kelembapan", f"{weather['main']['humidity']}%")
+
+    with col2:
+        st.metric("Tekanan Udara", f"{weather['main']['pressure']} hPa")
+        st.metric("Keadaan", weather['weather'][0]['description'].title())
+
+    # Map
+    st.map(pd.DataFrame([[lat, lon]], columns=["lat", "lon"]))
+
 else:
-    st.error("Failed to fetch weather data.")
+    st.error("⚠️ Gagal dapatkan data cuaca. Cuba lagi nanti.")
+
+# Weather Graph (optional simulation)
+st.subheader("📊 Simulasi Ramalan Cuaca Mingguan (Contoh)")
+dummy_data = pd.DataFrame({
+    "Hari": ["Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu", "Ahad"],
+    "Suhu (°C)": [30, 32, 31, 29, 33, 34, 30]
+})
+fig = px.line(dummy_data, x="Hari", y="Suhu (°C)", markers=True)
+st.plotly_chart(fig)
