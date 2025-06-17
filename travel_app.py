@@ -8,7 +8,7 @@ from PIL import Image
 import io
 
 # ============ SETTINGS ============
-st.set_page_config(page_title="Smart Malaysia Travel Companion", layout="wide", page_icon="🌴")
+st.set_page_config(page_title="Smart Malaysia Travel Comon", layout="wide", page_icon="🌴")
 
 # Custom CSS for vibrant UI
 st.markdown("""
